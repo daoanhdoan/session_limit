@@ -1,0 +1,162 @@
+<?php
+
+/**
+ * Do nothing if the session limit is exceeded.
+ */
+
+use Drupal\Core\Logger\RfcLogLevel;
+use Symfony\Component\HttpFoundation\RedirectResponse;
+
+define('SESSION_LIMIT_DO_NOTHING', 0);
+
+/**
+ * Automatically drop sessions that would exceed the limit.
+ */
+define('SESSION_LIMIT_DROP', 1);
+
+/**
+ * Disallow sessions that would exceed the limit.
+ */
+define('SESSION_LIMIT_DISALLOW_NEW', 2);
+
+/**
+ * Execute the session limit bypass hook.
+ *
+ * Allow other modules to prevent session limits in their own requirements.
+ *
+ * @return bool
+ *   TRUE if session limitation should be bypassed.
+ */
+function _session_limit_bypass() {
+  foreach (\Drupal::moduleHandler()->invokeAll('session_limit_bypass') as $bypass) {
+    if (!empty($bypass)) {
+      return TRUE;
+    }
+  }
+  return FALSE;
+}
+
+
+/**
+ * Get the maximum number of sessions for a user.
+ *
+ * @param user $account
+ *   (optional) The user account to check. If not
+ *   supplied the active user account is used.
+ */
+function session_limit_user_max_sessions($account = NULL) {
+  $limits = &drupal_static(__FUNCTION__, array());
+
+  if (empty($account)) {
+    $account = \Drupal::currentUser();
+  }
+
+  if (!isset($limits[$account->id()])) {
+    $config = \Drupal::config('session_limit.settings');
+    $limits[$account->id()] = (int) $config->get('max');
+  }
+
+  return $limits[$account->id()];
+}
+
+
+/**
+ * Limit a users access to the sites based on the current session.
+ *
+ * @param string $session
+ *   The session id string which identifies the current session.
+ * @param string $op
+ *   The action which caused the session limitation event. This is
+ *   either 'collision' or 'disconnect'.
+ *
+ * @return array
+ *   The results of all hook_session_limit functions.
+ *   Note that in a collision event, a Drupal goto is executed so
+ *   this function does not return.
+ */
+function session_limit_invoke_session_limit($session, $op) {
+  $return = array();
+
+  // Execute the hook_session_limit().
+  foreach (\Drupal::moduleHandler()->getImplementations('session_limit') as $name) {
+    $function = $name . '_session_limit';
+    $result = $function($session, $op);
+    if (isset($result) && is_array($result)) {
+      $return = array_merge($return, $result);
+    }
+    elseif (isset($result)) {
+      $return[] = $result;
+    }
+  }
+
+  // In the event of a collision, redirect to session handler.
+  if ($op == 'collision') {
+    $config = \Drupal::config('session_limit.settings');
+    if ($config->get('behaviour') == SESSION_LIMIT_DROP) {
+      $user = \Drupal::currentUser();
+
+      // Get the number of sessions that should be removed.
+      $limit = \Drupal::database()->query("SELECT COUNT(DISTINCT(sid)) - :max_sessions FROM {sessions} WHERE uid = :uid", array(
+        ':max_sessions' => session_limit_user_max_sessions($user),
+        ':uid' => $user->id(),
+      ))->fetchField();
+
+      if ($limit > 0) {
+        // Secure session ids are seperate rows in the database, but we don't want to kick
+        // the user off there http session and not there https session or vice versa. This
+        // is why this query is DISTINCT.
+        $result = \Drupal::database()->select('sessions', 's')
+          ->distinct()
+          ->fields('s', array('sid'))
+          ->condition('s.uid', $user->id())
+          ->orderBy('timestamp', 'ASC')
+          ->range(0, $limit)
+          ->execute();
+
+        foreach ($result as $session) {
+          session_limit_invoke_session_limit($session->sid, 'disconnect');
+        }
+      }
+    }
+    else {
+      // Otherwise re-direct to the session handler page so the user can
+      // choose which action they would like to take.
+      $response = new RedirectResponse(\Drupal\Core\Url::fromRoute('session_limit.limit')->toString());
+      $response->send();
+    }
+  }
+
+  return $return;
+}
+
+/**
+ * Implements hook_session_limit().
+ */
+function session_limit_session_limit($sid, $op) {
+  switch ($op) {
+    case 'collision':
+      \Drupal::logger('session_limit')->info( 'Exceeded maximum allowed active sessions.');
+      break;
+
+    case 'disconnect':
+      $config = \Drupal::config('session_limit.settings');
+      $message = $config->get('logged_out_message');
+      $message_severity = $config->get('logged_out_message_severity');
+      $fields['session'] = '';
+
+      if ($message_severity != '_none' && !empty($message)) {
+        $logout_message = t($message, array('@number' => session_limit_user_max_sessions()));
+        $logout_message = 'messages|' . serialize(array($message_severity => array($logout_message)));
+        $fields['session'] = $logout_message;
+      }
+
+      $fields['uid'] = 0;
+      \Drupal::database()->update('sessions')
+        ->fields($fields)
+        ->condition('sid', $sid)
+        ->execute();
+
+      \Drupal::logger('session_limit')->notice('Disconnected for excess active sessions.');
+      break;
+  }
+}

@@ -1,0 +1,5 @@
+session_limit:settings:
+  title: 'Session limit'
+  route_name: session_limit.settings
+  description: 'Settings for session limit'
+  parent: user.admin_index

@@ -1,0 +1,9 @@
+{
+  "name": "daoanhdoan/session_limit",
+  "description": "Session Limit - Limit simultaneous user sessions.",
+  "type": "drupal-custom-module",
+  "license":"GPL-2.0",
+  "extra": {
+    "installer-name": "session_limit"
+  }
+}

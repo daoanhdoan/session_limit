@@ -1,0 +1,25 @@
+session_limit.settings:
+  type: config_object
+  label: 'WOrkerman config.'
+  mapping:
+    max:
+      type: integer
+      label: 'Max'
+    include_root_user:
+      type: boolean
+      label: 'Include root user'
+    behaviour:
+      type: integer
+      label: 'Behaviour'
+    masquerade_ignore:
+      type: boolean
+      label: 'Masquerade ignore'
+    limit_hit_message:
+      type: string
+      label: 'Limit hit message'
+    logged_out_message_severity:
+      type: boolean
+      label: 'Logged out message severity'
+    logged_out_message:
+      type: text
+      label: 'Logged out message'

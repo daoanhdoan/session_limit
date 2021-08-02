@@ -1,0 +1,5 @@
+services:
+    session_limit:
+        class: Drupal\session_limit\EventSubscriber\SessionLimitSubscriber
+        tags:
+            - {name: event_subscriber}

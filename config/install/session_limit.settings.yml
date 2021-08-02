@@ -1,0 +1,8 @@
+max: 1
+include_root_user: false
+behaviour: 0
+masquerade_ignore: false
+limit_hit_message: 'The maximum number of simultaneous sessions (@number) for your account has been reached. You did not log off from a previous session or someone else is logged on to your account. This may indicate that your account has been compromised or that account sharing is limited on this site. Please contact the site administrator if you suspect your account has been compromised.'
+logged_out_message_severity: 'error'
+logged_out_message: 'You have been automatically logged out. Someone else has logged in with your username and password and the maximum number of @number simultaneous sessions was exceeded. This may indicate that your account has been compromised or that account sharing is not allowed on this site. Please contact the site administrator if you suspect your account has been compromised.'
+
